@@ -34,10 +34,10 @@ const sidebarItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: Bot, label: "Chatbots", href: "/dashboard/bots" },
   { icon: Database, label: "Knowledge Base", href: "/dashboard/knowledge" },
+  { icon: Sparkles, label: "Playground", href: "/dashboard/playground" },
   { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics" },
   { icon: Users, label: "Team", href: "/dashboard/team" },
   { icon: Key, label: "API Keys", href: "/dashboard/api-keys" },
-  { icon: FileText, label: "Logs", href: "/dashboard/logs" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
 
