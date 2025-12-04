@@ -8,6 +8,7 @@ import Dashboard from "./pages/Dashboard";
 import Bots from "./pages/Bots";
 import Knowledge from "./pages/Knowledge";
 import Analytics from "./pages/Analytics";
+import Playground from "./pages/Playground";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/dashboard/bots" element={<Bots />} />
           <Route path="/dashboard/knowledge" element={<Knowledge />} />
           <Route path="/dashboard/analytics" element={<Analytics />} />
+          <Route path="/dashboard/playground" element={<Playground />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

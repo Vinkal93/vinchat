@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bot, Plus, Search, MoreVertical, Play, Settings, Trash2, Copy } from "lucide-react";
+import { Bot, Plus, Search, MoreVertical, Play, Settings, Trash2, Copy, Code } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -10,62 +10,31 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link } from "react-router-dom";
-
-const chatbots = [
-  {
-    id: 1,
-    name: "Customer Support Bot",
-    description: "Handles customer inquiries and FAQs",
-    status: "active",
-    messages: 12340,
-    accuracy: 96,
-    lastActive: "2 min ago",
-  },
-  {
-    id: 2,
-    name: "Sales Assistant",
-    description: "Helps with product recommendations and pricing",
-    status: "active",
-    messages: 8560,
-    accuracy: 92,
-    lastActive: "5 min ago",
-  },
-  {
-    id: 3,
-    name: "HR Helper",
-    description: "Employee onboarding and policy questions",
-    status: "training",
-    messages: 0,
-    accuracy: 0,
-    lastActive: "Training...",
-  },
-  {
-    id: 4,
-    name: "Product Guide",
-    description: "Technical specifications and documentation",
-    status: "active",
-    messages: 4320,
-    accuracy: 89,
-    lastActive: "18 min ago",
-  },
-  {
-    id: 5,
-    name: "Internal Wiki Bot",
-    description: "Company knowledge base assistant",
-    status: "paused",
-    messages: 2100,
-    accuracy: 85,
-    lastActive: "2 days ago",
-  },
-];
+import { Link, useNavigate } from "react-router-dom";
+import { useBotStore } from "@/stores/botStore";
+import { CreateBotDialog } from "@/components/dialogs/CreateBotDialog";
+import { toast } from "sonner";
 
 export default function Bots() {
+  const navigate = useNavigate();
+  const { bots, deleteBot } = useBotStore();
   const [searchQuery, setSearchQuery] = useState("");
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  const filteredBots = chatbots.filter((bot) =>
+  const filteredBots = bots.filter((bot) =>
     bot.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleDelete = (id: string) => {
+    deleteBot(id);
+    toast.success('Bot deleted');
+  };
+
+  const copyEmbedCode = (botId: string, botName: string) => {
+    const code = `<script src="${window.location.origin}/embed.js" data-bot-id="${botId}"></script>`;
+    navigator.clipboard.writeText(code);
+    toast.success(`Embed code for "${botName}" copied!`);
+  };
 
   return (
     <DashboardLayout>
@@ -76,7 +45,10 @@ export default function Bots() {
             <h1 className="text-2xl font-bold">Chatbots</h1>
             <p className="text-muted-foreground">Manage and configure your AI chatbots</p>
           </div>
-          <Button className="bg-gradient-to-r from-primary to-accent hover:opacity-90">
+          <Button 
+            onClick={() => setCreateDialogOpen(true)}
+            className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
+          >
             <Plus className="w-4 h-4 mr-2" />
             Create New Bot
           </Button>
@@ -140,19 +112,19 @@ export default function Bots() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate(`/dashboard/playground?bot=${bot.id}`)}>
                       <Play className="w-4 h-4 mr-2" />
                       Open Playground
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => copyEmbedCode(bot.id, bot.name)}>
+                      <Code className="w-4 h-4 mr-2" />
+                      Copy Embed Code
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => navigate(`/dashboard/playground?bot=${bot.id}`)}>
                       <Settings className="w-4 h-4 mr-2" />
                       Settings
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Copy className="w-4 h-4 mr-2" />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="text-destructive">
+                    <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(bot.id)}>
                       <Trash2 className="w-4 h-4 mr-2" />
                       Delete
                     </DropdownMenuItem>
@@ -161,7 +133,7 @@ export default function Bots() {
               </div>
 
               <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                {bot.description}
+                {bot.description || 'No description'}
               </p>
 
               <div className="grid grid-cols-3 gap-4 py-4 border-t border-border">
@@ -180,11 +152,20 @@ export default function Bots() {
               </div>
 
               <div className="flex gap-2 mt-4">
-                <Button variant="outline" size="sm" className="flex-1">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => navigate(`/dashboard/playground?bot=${bot.id}`)}
+                >
                   <Play className="w-4 h-4 mr-1" />
                   Test
                 </Button>
-                <Button size="sm" className="flex-1">
+                <Button 
+                  size="sm" 
+                  className="flex-1"
+                  onClick={() => navigate(`/dashboard/playground?bot=${bot.id}`)}
+                >
                   Configure
                 </Button>
               </div>
@@ -196,6 +177,7 @@ export default function Bots() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: filteredBots.length * 0.1 }}
+            onClick={() => setCreateDialogOpen(true)}
             className="bg-card rounded-xl border-2 border-dashed border-border p-6 flex flex-col items-center justify-center min-h-[280px] hover:border-primary/50 transition-colors cursor-pointer group"
           >
             <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:bg-primary/20 transition-colors">
@@ -208,6 +190,8 @@ export default function Bots() {
           </motion.div>
         </div>
       </div>
+      
+      <CreateBotDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </DashboardLayout>
   );
 }
