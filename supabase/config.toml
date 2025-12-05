@@ -1,1 +1,13 @@
 project_id = "axecbwyesylkawrovemo"
+
+[functions.chat]
+verify_jwt = false
+
+[functions.crawl-url]
+verify_jwt = true
+
+[functions.get-bot-config]
+verify_jwt = false
+
+[functions.save-message]
+verify_jwt = false
