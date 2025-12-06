@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bot, Plus, Search, MoreVertical, Play, Settings, Trash2, Copy, Code } from "lucide-react";
+import { Bot, Plus, Search, MoreVertical, Play, Settings, Trash2, Code, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
@@ -10,14 +10,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link, useNavigate } from "react-router-dom";
-import { useBotStore } from "@/stores/botStore";
+import { useNavigate } from "react-router-dom";
 import { CreateBotDialog } from "@/components/dialogs/CreateBotDialog";
 import { toast } from "sonner";
+import { useBots } from "@/hooks/useBots";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 export default function Bots() {
   const navigate = useNavigate();
-  const { bots, deleteBot } = useBotStore();
+  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
+  const { bots, deleteBot, loading: botsLoading } = useBots(currentWorkspace?.id);
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
@@ -25,9 +27,8 @@ export default function Bots() {
     bot.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleDelete = (id: string) => {
-    deleteBot(id);
-    toast.success('Bot deleted');
+  const handleDelete = async (id: string) => {
+    await deleteBot(id);
   };
 
   const copyEmbedCode = (botId: string, botName: string) => {
@@ -35,6 +36,34 @@ export default function Bots() {
     navigator.clipboard.writeText(code);
     toast.success(`Embed code for "${botName}" copied!`);
   };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'text-accent';
+      case 'inactive': return 'text-muted-foreground';
+      case 'draft': return 'text-primary';
+      default: return 'text-muted-foreground';
+    }
+  };
+
+  const getStatusDot = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-accent';
+      case 'inactive': return 'bg-muted-foreground';
+      case 'draft': return 'bg-primary animate-pulse';
+      default: return 'bg-muted-foreground';
+    }
+  };
+
+  if (workspaceLoading || botsLoading) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -82,24 +111,8 @@ export default function Bots() {
                   </div>
                   <div>
                     <h3 className="font-semibold">{bot.name}</h3>
-                    <span
-                      className={`inline-flex items-center gap-1 text-xs ${
-                        bot.status === "active"
-                          ? "text-accent"
-                          : bot.status === "training"
-                          ? "text-primary"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          bot.status === "active"
-                            ? "bg-accent"
-                            : bot.status === "training"
-                            ? "bg-primary animate-pulse"
-                            : "bg-muted-foreground"
-                        }`}
-                      />
+                    <span className={`inline-flex items-center gap-1 text-xs ${getStatusColor(bot.status)}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${getStatusDot(bot.status)}`} />
                       {bot.status}
                     </span>
                   </div>
@@ -138,16 +151,18 @@ export default function Bots() {
 
               <div className="grid grid-cols-3 gap-4 py-4 border-t border-border">
                 <div>
-                  <p className="text-lg font-semibold">{bot.messages.toLocaleString()}</p>
+                  <p className="text-lg font-semibold">{bot.total_messages.toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground">Messages</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold">{bot.accuracy}%</p>
-                  <p className="text-xs text-muted-foreground">Accuracy</p>
+                  <p className="text-lg font-semibold">{bot.total_conversations}</p>
+                  <p className="text-xs text-muted-foreground">Chats</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{bot.lastActive}</p>
-                  <p className="text-xs text-muted-foreground">Last active</p>
+                  <p className="text-sm font-medium">
+                    {new Date(bot.updated_at).toLocaleDateString()}
+                  </p>
+                  <p className="text-xs text-muted-foreground">Updated</p>
                 </div>
               </div>
 
@@ -189,6 +204,12 @@ export default function Bots() {
             </p>
           </motion.div>
         </div>
+
+        {filteredBots.length === 0 && searchQuery && (
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">No bots found matching "{searchQuery}"</p>
+          </div>
+        )}
       </div>
       
       <CreateBotDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />

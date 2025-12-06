@@ -9,17 +9,15 @@ import {
   Copy,
   Check,
   RefreshCw,
-  ChevronDown,
   Code,
-  Palette
+  Loader2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout";
-import { useBotStore } from "@/stores/botStore";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Select,
   SelectContent,
@@ -30,6 +28,9 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
+import { useBots } from "@/hooks/useBots";
+import { useKnowledge } from "@/hooks/useKnowledge";
+import { useWorkspace } from "@/hooks/useWorkspace";
 
 interface Message {
   id: string;
@@ -41,76 +42,166 @@ interface Message {
 
 export default function Playground() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const botIdParam = searchParams.get('bot');
   
-  const { bots, knowledge, getBotById, updateBot } = useBotStore();
-  const [selectedBotId, setSelectedBotId] = useState(botIdParam || bots[0]?.id || '');
+  const { currentWorkspace, loading: workspaceLoading } = useWorkspace();
+  const { bots, updateBot, loading: botsLoading } = useBots(currentWorkspace?.id);
+  
+  const [selectedBotId, setSelectedBotId] = useState(botIdParam || '');
+  const { knowledge } = useKnowledge(selectedBotId);
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [sessionId] = useState(() => crypto.randomUUID());
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const selectedBot = getBotById(selectedBotId);
+  const selectedBot = bots.find(b => b.id === selectedBotId);
   
   // Bot settings state
-  const [systemPrompt, setSystemPrompt] = useState(selectedBot?.systemPrompt || '');
-  const [welcomeMessage, setWelcomeMessage] = useState(selectedBot?.welcomeMessage || '');
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
   const [temperature, setTemperature] = useState(0.7);
   const [showSources, setShowSources] = useState(true);
   
+  // Set default selected bot when bots load
+  useEffect(() => {
+    if (bots.length > 0 && !selectedBotId) {
+      setSelectedBotId(bots[0].id);
+    }
+  }, [bots, selectedBotId]);
+
   useEffect(() => {
     if (selectedBot) {
-      setSystemPrompt(selectedBot.systemPrompt);
-      setWelcomeMessage(selectedBot.welcomeMessage);
+      setSystemPrompt(selectedBot.system_prompt || '');
+      setWelcomeMessage(selectedBot.welcome_message || '');
+      setTemperature(parseFloat(String(selectedBot.temperature)) || 0.7);
     }
   }, [selectedBot]);
   
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
-  
-  const simulateResponse = async (userMessage: string) => {
+
+  // Real streaming AI response
+  const streamResponse = async (userMessage: string) => {
+    if (!selectedBotId) return;
+    
     setIsLoading(true);
     
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
-    
-    // Get relevant knowledge
-    const botKnowledge = knowledge.filter(k => 
-      selectedBot?.knowledgeIds.includes(k.id)
-    );
-    
-    // Simple keyword matching for demo
-    const relevantSources = botKnowledge
-      .filter(k => {
-        const keywords = userMessage.toLowerCase().split(' ');
-        return keywords.some(kw => k.content.toLowerCase().includes(kw));
-      })
-      .map(k => k.name);
-    
-    // Generate response based on system prompt and knowledge
-    let response = '';
-    if (userMessage.toLowerCase().includes('hello') || userMessage.toLowerCase().includes('hi')) {
-      response = welcomeMessage || "Hello! How can I assist you today?";
-    } else if (relevantSources.length > 0) {
-      const matchedKnowledge = botKnowledge.find(k => relevantSources.includes(k.name));
-      response = `Based on our knowledge base: ${matchedKnowledge?.content || 'I found relevant information for your query.'}`;
-    } else {
-      response = "I'll do my best to help you with that. Could you provide more details about what you're looking for?";
-    }
-    
-    const assistantMessage: Message = {
-      id: Date.now().toString(),
+    // Add empty assistant message that we'll stream into
+    const assistantMessageId = Date.now().toString();
+    setMessages(prev => [...prev, {
+      id: assistantMessageId,
       role: 'assistant',
-      content: response,
-      sources: showSources ? relevantSources : undefined,
+      content: '',
       timestamp: new Date(),
-    };
-    
-    setMessages(prev => [...prev, assistantMessage]);
-    setIsLoading(false);
+    }]);
+
+    try {
+      const chatMessages = messages.map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+      chatMessages.push({ role: 'user', content: userMessage });
+
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({
+          messages: chatMessages,
+          botId: selectedBotId,
+          sessionId,
+          visitorInfo: { source: 'playground' },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('No response body');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete lines
+        let newlineIndex: number;
+        while ((newlineIndex = buffer.indexOf('\n')) !== -1) {
+          let line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          
+          if (line.endsWith('\r')) line = line.slice(0, -1);
+          if (line.startsWith(':') || line.trim() === '') continue;
+          if (!line.startsWith('data: ')) continue;
+          
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') break;
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) {
+              fullContent += content;
+              setMessages(prev => prev.map(m => 
+                m.id === assistantMessageId 
+                  ? { ...m, content: fullContent }
+                  : m
+              ));
+            }
+          } catch {
+            // Incomplete JSON, put back in buffer
+            buffer = line + '\n' + buffer;
+            break;
+          }
+        }
+      }
+
+      // Add sources if showing
+      if (showSources && knowledge.length > 0) {
+        const relevantSources = knowledge
+          .filter(k => k.is_processed)
+          .slice(0, 3)
+          .map(k => k.title);
+        
+        setMessages(prev => prev.map(m => 
+          m.id === assistantMessageId 
+            ? { ...m, sources: relevantSources }
+            : m
+        ));
+      }
+
+    } catch (error) {
+      console.error('Streaming error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get response';
+      
+      setMessages(prev => prev.map(m => 
+        m.id === assistantMessageId 
+          ? { ...m, content: `Sorry, I encountered an error: ${errorMessage}. Please try again.` }
+          : m
+      ));
+      
+      toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   const handleSend = async () => {
@@ -124,9 +215,10 @@ export default function Playground() {
     };
     
     setMessages(prev => [...prev, userMessage]);
+    const messageText = inputValue;
     setInputValue('');
     
-    await simulateResponse(inputValue);
+    await streamResponse(messageText);
   };
   
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -140,13 +232,18 @@ export default function Playground() {
     setMessages([]);
   };
   
-  const saveSettings = () => {
-    if (selectedBot) {
-      updateBot(selectedBot.id, {
-        systemPrompt,
-        welcomeMessage,
+  const saveSettings = async () => {
+    if (!selectedBot) return;
+    
+    try {
+      await updateBot(selectedBot.id, {
+        system_prompt: systemPrompt,
+        welcome_message: welcomeMessage,
+        temperature: temperature,
       });
       toast.success('Settings saved successfully!');
+    } catch (error) {
+      toast.error('Failed to save settings');
     }
   };
   
@@ -161,6 +258,35 @@ export default function Playground() {
     toast.success('Embed code copied!');
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (workspaceLoading || botsLoading) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  if (bots.length === 0) {
+    return (
+      <DashboardLayout>
+        <div className="h-[calc(100vh-8rem)] flex flex-col items-center justify-center text-center p-8">
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-4">
+            <Bot className="w-8 h-8 text-primary" />
+          </div>
+          <h3 className="font-semibold text-lg mb-2">No Bots Yet</h3>
+          <p className="text-muted-foreground text-sm max-w-md mb-4">
+            Create your first chatbot to start testing in the playground.
+          </p>
+          <Button onClick={() => navigate('/dashboard/bots')}>
+            Create a Bot
+          </Button>
+        </div>
+      </DashboardLayout>
+    );
+  }
   
   return (
     <DashboardLayout>
@@ -211,7 +337,7 @@ export default function Playground() {
                   </div>
                   <h3 className="font-semibold text-lg mb-2">Test Your Chatbot</h3>
                   <p className="text-muted-foreground text-sm max-w-md">
-                    Send a message to test how your bot responds. Adjust settings on the right to fine-tune behavior.
+                    Send a message to test how your bot responds with real AI. Adjust settings on the right to fine-tune behavior.
                   </p>
                 </div>
               )}
@@ -238,7 +364,15 @@ export default function Playground() {
                             : 'bg-muted'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                        <p className="text-sm whitespace-pre-wrap">
+                          {message.content || (
+                            <span className="flex gap-1">
+                              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          )}
+                        </p>
                       </div>
                       {message.sources && message.sources.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
@@ -263,25 +397,6 @@ export default function Playground() {
                 ))}
               </AnimatePresence>
               
-              {isLoading && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex gap-3"
-                >
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
-                    <Bot className="w-4 h-4 text-white" />
-                  </div>
-                  <div className="bg-muted rounded-2xl px-4 py-3">
-                    <div className="flex gap-1">
-                      <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-              
               <div ref={messagesEndRef} />
             </div>
             
@@ -301,7 +416,11 @@ export default function Playground() {
                   disabled={!inputValue.trim() || !selectedBot || isLoading}
                   className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
                 >
-                  <Send className="w-4 h-4" />
+                  {isLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                 </Button>
               </div>
             </div>
@@ -347,7 +466,7 @@ export default function Playground() {
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <Label>Temperature</Label>
-                      <span className="text-sm text-muted-foreground">{temperature}</span>
+                      <span className="text-sm text-muted-foreground">{temperature.toFixed(1)}</span>
                     </div>
                     <Slider
                       value={[temperature]}
@@ -377,20 +496,19 @@ export default function Playground() {
                   
                   {/* Knowledge Base */}
                   <div className="space-y-2">
-                    <Label>Connected Knowledge</Label>
-                    <div className="space-y-2">
-                      {knowledge
-                        .filter(k => selectedBot?.knowledgeIds.includes(k.id))
-                        .map(k => (
+                    <Label>Connected Knowledge ({knowledge.length})</Label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {knowledge.length > 0 ? (
+                        knowledge.map(k => (
                           <div
                             key={k.id}
                             className="flex items-center gap-2 p-2 bg-muted rounded-lg text-sm"
                           >
-                            <div className="w-2 h-2 rounded-full bg-accent" />
-                            {k.name}
+                            <div className={`w-2 h-2 rounded-full ${k.is_processed ? 'bg-accent' : 'bg-muted-foreground'}`} />
+                            <span className="truncate">{k.title}</span>
                           </div>
-                        ))}
-                      {selectedBot?.knowledgeIds.length === 0 && (
+                        ))
+                      ) : (
                         <p className="text-sm text-muted-foreground">
                           No knowledge base connected
                         </p>
