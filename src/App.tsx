@@ -11,6 +11,7 @@ import Knowledge from "./pages/Knowledge";
 import Analytics from "./pages/Analytics";
 import Playground from "./pages/Playground";
 import Settings from "./pages/Settings";
+import Embed from "./pages/Embed";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
@@ -46,6 +47,7 @@ function AppRoutes() {
       <Route path="/dashboard/analytics" element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
       <Route path="/dashboard/playground" element={<ProtectedRoute><Playground /></ProtectedRoute>} />
       <Route path="/dashboard/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+      <Route path="/dashboard/embed" element={<ProtectedRoute><Embed /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
