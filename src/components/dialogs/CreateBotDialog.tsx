@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bot, Sparkles } from "lucide-react";
+import { Bot, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,10 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useBotStore } from "@/stores/botStore";
+import { useBots } from "@/hooks/useBots";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface CreateBotDialogProps {
   open: boolean;
@@ -24,54 +24,59 @@ interface CreateBotDialogProps {
 
 export function CreateBotDialog({ open, onOpenChange }: CreateBotDialogProps) {
   const navigate = useNavigate();
-  const { addBot, knowledge } = useBotStore();
+  const { currentWorkspace } = useWorkspace();
+  const { createBot } = useBots(currentWorkspace?.id);
   
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('You are a helpful assistant. Answer questions based on the provided knowledge base.');
   const [welcomeMessage, setWelcomeMessage] = useState('Hello! How can I help you today?');
-  const [selectedKnowledge, setSelectedKnowledge] = useState<string[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!name.trim()) {
       toast.error('Please enter a bot name');
       return;
     }
+
+    if (!currentWorkspace?.id) {
+      toast.error('No workspace selected');
+      return;
+    }
+
+    setIsSubmitting(true);
     
-    const newBot = addBot({
-      name,
-      description,
-      systemPrompt,
-      welcomeMessage,
-      status: 'active',
-      knowledgeIds: selectedKnowledge,
-      widgetConfig: {
-        primaryColor: '#6366f1',
-        position: 'bottom-right',
-        headerTitle: name,
-      },
-    });
-    
-    toast.success('Bot created successfully!');
-    onOpenChange(false);
-    
-    // Reset form
-    setName('');
-    setDescription('');
-    setSystemPrompt('You are a helpful assistant. Answer questions based on the provided knowledge base.');
-    setWelcomeMessage('Hello! How can I help you today?');
-    setSelectedKnowledge([]);
-    
-    // Navigate to playground
-    navigate(`/dashboard/playground?bot=${newBot.id}`);
-  };
-  
-  const toggleKnowledge = (id: string) => {
-    setSelectedKnowledge(prev => 
-      prev.includes(id) 
-        ? prev.filter(k => k !== id)
-        : [...prev, id]
-    );
+    try {
+      const newBot = await createBot({
+        name,
+        description: description || null,
+        system_prompt: systemPrompt,
+        welcome_message: welcomeMessage,
+        status: 'active',
+        widget_color: '#6366f1',
+        widget_position: 'bottom-right',
+        widget_title: name,
+      });
+      
+      if (newBot) {
+        toast.success('Bot created successfully!');
+        onOpenChange(false);
+        
+        // Reset form
+        setName('');
+        setDescription('');
+        setSystemPrompt('You are a helpful assistant. Answer questions based on the provided knowledge base.');
+        setWelcomeMessage('Hello! How can I help you today?');
+        
+        // Navigate to playground
+        navigate(`/dashboard/playground?bot=${newBot.id}`);
+      }
+    } catch (error) {
+      console.error('Error creating bot:', error);
+      toast.error('Failed to create bot');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   return (
@@ -130,44 +135,18 @@ export function CreateBotDialog({ open, onOpenChange }: CreateBotDialogProps) {
               onChange={(e) => setWelcomeMessage(e.target.value)}
             />
           </div>
-          
-          <div className="space-y-2">
-            <Label>Connect Knowledge Base</Label>
-            {knowledge.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No knowledge items available. Add some first in the Knowledge page.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-32 overflow-y-auto">
-                {knowledge.map(item => (
-                  <div
-                    key={item.id}
-                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted cursor-pointer"
-                    onClick={() => toggleKnowledge(item.id)}
-                  >
-                    <Checkbox
-                      checked={selectedKnowledge.includes(item.id)}
-                      onCheckedChange={() => toggleKnowledge(item.id)}
-                    />
-                    <span className="text-sm flex-1">{item.name}</span>
-                    <span className="text-xs text-muted-foreground capitalize">
-                      {item.type}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
         
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSubmitting}>
             Cancel
           </Button>
           <Button 
             onClick={handleCreate}
             className="bg-gradient-to-r from-primary to-accent hover:opacity-90"
+            disabled={isSubmitting}
           >
+            {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
             <Bot className="w-4 h-4 mr-2" />
             Create Bot
           </Button>

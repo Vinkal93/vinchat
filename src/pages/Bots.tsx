@@ -151,16 +151,16 @@ export default function Bots() {
 
               <div className="grid grid-cols-3 gap-4 py-4 border-t border-border">
                 <div>
-                  <p className="text-lg font-semibold">{bot.total_messages.toLocaleString()}</p>
+                  <p className="text-lg font-semibold">{(bot.total_messages || 0).toLocaleString()}</p>
                   <p className="text-xs text-muted-foreground">Messages</p>
                 </div>
                 <div>
-                  <p className="text-lg font-semibold">{bot.total_conversations}</p>
+                  <p className="text-lg font-semibold">{bot.total_conversations || 0}</p>
                   <p className="text-xs text-muted-foreground">Chats</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium">
-                    {new Date(bot.updated_at).toLocaleDateString()}
+                    {bot.updated_at ? new Date(bot.updated_at).toLocaleDateString() : 'N/A'}
                   </p>
                   <p className="text-xs text-muted-foreground">Updated</p>
                 </div>

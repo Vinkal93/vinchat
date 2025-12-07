@@ -9,11 +9,23 @@
   const botId = script?.getAttribute('data-bot-id');
   const position = script?.getAttribute('data-position') || 'bottom-right';
   const primaryColor = script?.getAttribute('data-color') || '#6366f1';
+  
+  // Get the API URL from script src
+  const scriptSrc = script?.src || '';
+  const baseUrl = scriptSrc.replace('/embed.js', '');
+  const apiUrl = baseUrl.includes('localhost') 
+    ? 'https://axecbwyesylkawrovemo.supabase.co/functions/v1'
+    : 'https://axecbwyesylkawrovemo.supabase.co/functions/v1';
 
   if (!botId) {
     console.error('Chatbot Widget: data-bot-id is required');
     return;
   }
+
+  // Generate unique session ID
+  const sessionId = 'session_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+  let conversationId = null;
+  let botConfig = null;
 
   // Create styles
   const styles = document.createElement('style');
@@ -157,6 +169,7 @@
       border-radius: 16px;
       font-size: 14px;
       line-height: 1.5;
+      white-space: pre-wrap;
     }
 
     .chatbot-message.user {
@@ -278,7 +291,7 @@
           <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
         </div>
         <div class="chatbot-header-info">
-          <h3>AI Assistant</h3>
+          <h3 id="chatbot-title-${botId}">AI Assistant</h3>
           <p>Online • Ready to help</p>
         </div>
         <button class="chatbot-close-btn" id="chatbot-close-${botId}">
@@ -286,7 +299,6 @@
         </button>
       </div>
       <div class="chatbot-messages" id="chatbot-messages-${botId}">
-        <div class="chatbot-message bot">Hello! 👋 How can I help you today?</div>
       </div>
       <div class="chatbot-input-area">
         <input type="text" class="chatbot-input" id="chatbot-input-${botId}" placeholder="Type your message...">
@@ -295,7 +307,7 @@
         </button>
       </div>
       <div class="chatbot-powered-by">
-        Powered by <a href="${window.location.origin}" target="_blank">ChatBot Builder</a>
+        Powered by <a href="#" target="_blank">AI Chatbot</a>
       </div>
     </div>
     <button class="chatbot-toggle-btn" id="chatbot-toggle-${botId}">
@@ -311,13 +323,47 @@
   const messagesContainer = document.getElementById(`chatbot-messages-${botId}`);
   const input = document.getElementById(`chatbot-input-${botId}`);
   const sendBtn = document.getElementById(`chatbot-send-${botId}`);
+  const titleEl = document.getElementById(`chatbot-title-${botId}`);
 
   let isOpen = false;
+  let messageHistory = [];
+
+  // Fetch bot config on load
+  async function fetchBotConfig() {
+    try {
+      const response = await fetch(`${apiUrl}/get-bot-config?botId=${botId}`);
+      if (response.ok) {
+        const data = await response.json();
+        botConfig = data;
+        
+        // Update UI with bot config
+        if (botConfig.widget_title) {
+          titleEl.textContent = botConfig.widget_title;
+        }
+        
+        // Add welcome message
+        if (botConfig.welcome_message) {
+          addMessage(botConfig.welcome_message, false);
+        }
+      } else {
+        addMessage('Hello! How can I help you today?', false);
+      }
+    } catch (error) {
+      console.error('Error fetching bot config:', error);
+      addMessage('Hello! How can I help you today?', false);
+    }
+  }
+
+  // Initialize
+  fetchBotConfig();
 
   // Toggle chat window
   toggleBtn.addEventListener('click', () => {
     isOpen = !isOpen;
     chatWindow.classList.toggle('open', isOpen);
+    if (isOpen) {
+      input.focus();
+    }
   });
 
   closeBtn.addEventListener('click', () => {
@@ -332,6 +378,12 @@
     message.textContent = content;
     messagesContainer.appendChild(message);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    // Add to history
+    messageHistory.push({
+      role: isUser ? 'user' : 'assistant',
+      content: content
+    });
   }
 
   // Show typing indicator
@@ -350,7 +402,16 @@
     if (typing) typing.remove();
   }
 
-  // Send message
+  // Create streaming bot message
+  function createStreamingMessage() {
+    const message = document.createElement('div');
+    message.className = 'chatbot-message bot';
+    message.id = `chatbot-streaming-${botId}`;
+    messagesContainer.appendChild(message);
+    return message;
+  }
+
+  // Send message with streaming
   async function sendMessage() {
     const text = input.value.trim();
     if (!text) return;
@@ -361,20 +422,77 @@
 
     showTyping();
 
-    // Simulate response (in production, this would call your API)
-    setTimeout(() => {
+    try {
+      const response = await fetch(`${apiUrl}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          botId: botId,
+          message: text,
+          sessionId: sessionId,
+          conversationId: conversationId,
+          messages: messageHistory.slice(-10), // Send last 10 messages for context
+        }),
+      });
+
       hideTyping();
-      const responses = [
-        "Thank you for your message! I'm here to help.",
-        "That's a great question! Let me find that information for you.",
-        "I understand. Based on our knowledge base, here's what I found...",
-        "I'd be happy to assist you with that!",
-        "Let me look into that for you."
-      ];
-      const response = responses[Math.floor(Math.random() * responses.length)];
-      addMessage(response, false);
+
+      if (!response.ok) {
+        throw new Error('Chat request failed');
+      }
+
+      // Handle streaming response
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const streamingMessage = createStreamingMessage();
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.conversationId) {
+                conversationId = data.conversationId;
+              }
+              
+              if (data.content) {
+                fullContent += data.content;
+                streamingMessage.textContent = fullContent;
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+              }
+              
+              if (data.done) {
+                // Add to history
+                messageHistory.push({
+                  role: 'assistant',
+                  content: fullContent
+                });
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      hideTyping();
+      addMessage('Sorry, I encountered an error. Please try again.', false);
+    } finally {
       sendBtn.disabled = false;
-    }, 1000 + Math.random() * 1000);
+      input.focus();
+    }
   }
 
   // Event listeners
