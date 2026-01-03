@@ -12,7 +12,7 @@ const footerLinks = {
   Resources: [
     { name: "Documentation", href: "#" },
     { name: "Guides", href: "#" },
-    { name: "Blog", href: "#" },
+    { name: "Blog", href: "/blog", isRoute: true },
     { name: "Case Studies", href: "#" },
     { name: "Community", href: "#" },
   ],
@@ -23,8 +23,8 @@ const footerLinks = {
     { name: "Partners", href: "#" },
   ],
   Legal: [
-    { name: "Privacy Policy", href: "#" },
-    { name: "Terms of Service", href: "#" },
+    { name: "Privacy Policy", href: "/privacy", isRoute: true },
+    { name: "Terms of Service", href: "/terms", isRoute: true },
     { name: "Cookie Policy", href: "#" },
     { name: "DPA", href: "#" },
   ],
@@ -72,12 +72,21 @@ export function Footer() {
               <ul className="space-y-3">
                 {links.map((link) => (
                   <li key={link.name}>
-                    <a
-                      href={link.href}
-                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {link.name}
-                    </a>
+                    {(link as { isRoute?: boolean }).isRoute ? (
+                      <Link
+                        to={link.href}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {link.name}
+                      </Link>
+                    ) : (
+                      <a
+                        href={link.href}
+                        className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {link.name}
+                      </a>
+                    )}
                   </li>
                 ))}
               </ul>
