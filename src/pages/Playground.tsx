@@ -10,8 +10,10 @@ import {
   Check,
   RefreshCw,
   Code,
-  Loader2
+  Loader2,
+  BookOpen
 } from "lucide-react";
+import { MarkdownMessage } from "@/components/chat/MarkdownMessage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -66,6 +68,7 @@ export default function Playground() {
   const [welcomeMessage, setWelcomeMessage] = useState('');
   const [temperature, setTemperature] = useState(0.7);
   const [showSources, setShowSources] = useState(true);
+  const [knowledgeOnlyMode, setKnowledgeOnlyMode] = useState(false);
   
   // Set default selected bot when bots load
   useEffect(() => {
@@ -79,6 +82,7 @@ export default function Playground() {
       setSystemPrompt(selectedBot.system_prompt || '');
       setWelcomeMessage(selectedBot.welcome_message || '');
       setTemperature(parseFloat(String(selectedBot.temperature)) || 0.7);
+      setKnowledgeOnlyMode(selectedBot.business_only || false);
     }
   }, [selectedBot]);
   
@@ -240,6 +244,7 @@ export default function Playground() {
         system_prompt: systemPrompt,
         welcome_message: welcomeMessage,
         temperature: temperature,
+        business_only: knowledgeOnlyMode,
       });
       toast.success('Settings saved successfully!');
     } catch (error) {
@@ -364,15 +369,19 @@ export default function Playground() {
                             : 'bg-muted'
                         }`}
                       >
-                        <p className="text-sm whitespace-pre-wrap">
-                          {message.content || (
+                        {message.role === 'assistant' ? (
+                          message.content ? (
+                            <MarkdownMessage content={message.content} className="text-sm" />
+                          ) : (
                             <span className="flex gap-1">
                               <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                               <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
                               <span className="w-2 h-2 bg-primary/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                             </span>
-                          )}
-                        </p>
+                          )
+                        ) : (
+                          <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                        )}
                       </div>
                       {message.sources && message.sources.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
@@ -478,6 +487,23 @@ export default function Playground() {
                     <p className="text-xs text-muted-foreground">
                       Lower = more focused, Higher = more creative
                     </p>
+                  </div>
+                  
+                  {/* Knowledge Only Mode */}
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg border border-border">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-primary" />
+                      <div>
+                        <Label>Knowledge Only Mode</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Only answer from knowledge base
+                        </p>
+                      </div>
+                    </div>
+                    <Switch
+                      checked={knowledgeOnlyMode}
+                      onCheckedChange={setKnowledgeOnlyMode}
+                    />
                   </div>
                   
                   {/* Show Sources */}

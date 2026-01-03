@@ -16,6 +16,7 @@ import {
   LogOut,
   HelpCircle,
   Code,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,9 +35,9 @@ const sidebarItems = [
   { icon: Bot, label: "Chatbots", href: "/dashboard/bots" },
   { icon: Database, label: "Knowledge Base", href: "/dashboard/knowledge" },
   { icon: Sparkles, label: "Playground", href: "/dashboard/playground" },
+  { icon: MessageSquare, label: "Conversations", href: "/dashboard/conversations" },
   { icon: BarChart3, label: "Analytics", href: "/dashboard/analytics" },
   { icon: Code, label: "Embed", href: "/dashboard/embed" },
-  { icon: Key, label: "API Keys", href: "/dashboard/settings" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
 

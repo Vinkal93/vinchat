@@ -321,14 +321,6 @@ export default function Login() {
             </p>
           )}
 
-          {/* Demo credentials hint */}
-          <div className="mt-6 p-4 bg-muted/50 rounded-lg border border-border">
-            <p className="text-xs text-muted-foreground text-center">
-              <strong>Demo Account:</strong><br />
-              Email: vinkalp041@gmail.com<br />
-              Password: 630649@123
-            </p>
-          </div>
         </motion.div>
       </div>
 
